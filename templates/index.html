@@ -1,0 +1,807 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI Server Log Agent</title>
+  <style>
+    /* ── Design tokens ── */
+    :root {
+      --bg:        #080d18;
+      --surface:   #0d1520;
+      --surface2:  #111d2e;
+      --cyan:      #00e5d6;
+      --cyan-dim:  rgba(0,229,214,0.15);
+      --cyan-border: rgba(0,229,214,0.22);
+      --cyan-glow: rgba(0,229,214,0.08);
+      --text:      #c8dff0;
+      --muted:     #4a6480;
+      --green:     #00e676;
+      --amber:     #ffb300;
+      --red:       #ff5252;
+      --radius:    10px;
+      --font:      'Segoe UI', system-ui, sans-serif;
+      --mono:      'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: var(--font);
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100dvh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ── Top nav ── */
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 32px;
+      height: 58px;
+      border-bottom: 1px solid var(--cyan-border);
+      background: var(--surface);
+      flex-shrink: 0;
+    }
+    .topbar-brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .brand-icon {
+      width: 34px; height: 34px;
+      background: var(--cyan-dim);
+      border: 1px solid var(--cyan-border);
+      border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 17px;
+    }
+    .brand-name {
+      font-size: 15px;
+      font-weight: 600;
+      color: var(--cyan);
+      letter-spacing: 0.04em;
+    }
+    .brand-sub {
+      font-size: 11px;
+      color: var(--muted);
+      margin-top: 1px;
+    }
+    .topbar-badges {
+      display: flex;
+      gap: 8px;
+    }
+    .badge {
+      font-size: 11px;
+      padding: 4px 10px;
+      border-radius: 20px;
+      border: 1px solid var(--cyan-border);
+      color: var(--cyan);
+      background: var(--cyan-dim);
+      letter-spacing: 0.03em;
+    }
+
+    /* ── Layout ── */
+    .layout {
+      display: flex;
+      flex: 1;
+      min-height: 0;
+    }
+
+    /* ── Sidebar ── */
+    .sidebar {
+      width: 260px;
+      flex-shrink: 0;
+      background: var(--surface);
+      border-right: 1px solid var(--cyan-border);
+      padding: 24px 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+      overflow-y: auto;
+    }
+    .sidebar h4 {
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--cyan);
+      margin-bottom: 10px;
+    }
+
+    .stat-grid { display: flex; flex-direction: column; gap: 8px; }
+    .stat-card {
+      background: var(--surface2);
+      border: 1px solid var(--cyan-border);
+      border-radius: var(--radius);
+      padding: 12px 14px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .stat-icon {
+      font-size: 20px;
+      width: 36px; height: 36px;
+      background: var(--cyan-dim);
+      border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+    }
+    .stat-label { font-size: 11px; color: var(--muted); }
+    .stat-val   { font-size: 14px; font-weight: 600; color: var(--text); }
+
+    .capability-list { display: flex; flex-direction: column; gap: 7px; }
+    .cap-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      font-size: 12.5px;
+      color: var(--text);
+      line-height: 1.4;
+    }
+    .cap-dot {
+      width: 6px; height: 6px;
+      background: var(--cyan);
+      border-radius: 50%;
+      margin-top: 5px;
+      flex-shrink: 0;
+    }
+
+    .format-list { display: flex; gap: 6px; flex-wrap: wrap; }
+    .fmt-chip {
+      font-size: 11px;
+      padding: 4px 10px;
+      border: 1px solid var(--cyan-border);
+      border-radius: 20px;
+      color: var(--cyan);
+      background: var(--cyan-dim);
+      font-family: var(--mono);
+    }
+
+    .demo-btn {
+      background: transparent;
+      border: 1px solid var(--cyan-border);
+      color: var(--cyan);
+      border-radius: var(--radius);
+      padding: 10px 24px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      letter-spacing: 0.04em;
+      transition: all 0.18s;
+    }
+    .demo-btn:hover {
+      background: var(--cyan-dim);
+      border-color: var(--cyan);
+    }
+
+    /* ── Main content ── */
+    .main {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      padding: 32px;
+      gap: 24px;
+      overflow-y: auto;
+      min-width: 0;
+    }
+
+    .page-header h1 {
+      font-size: 22px;
+      font-weight: 700;
+      color: var(--cyan);
+      letter-spacing: 0.03em;
+    }
+    .page-header p {
+      font-size: 13px;
+      color: var(--muted);
+      margin-top: 4px;
+    }
+
+    /* ── Upload zone ── */
+    .upload-zone {
+      border: 2px dashed var(--cyan-border);
+      border-radius: 14px;
+      background: var(--cyan-glow);
+      padding: 40px 24px;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color 0.2s, background 0.2s;
+      position: relative;
+    }
+    .upload-zone.dragover {
+      border-color: var(--cyan);
+      background: var(--cyan-dim);
+    }
+    .upload-zone input[type="file"] {
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      cursor: pointer;
+      width: 100%;
+      height: 100%;
+    }
+    .upload-icon { font-size: 40px; margin-bottom: 12px; }
+    .upload-zone h3 {
+      font-size: 16px;
+      color: var(--text);
+      margin-bottom: 6px;
+    }
+    .upload-zone p {
+      font-size: 13px;
+      color: var(--muted);
+    }
+    .upload-zone .formats {
+      margin-top: 14px;
+      display: flex;
+      justify-content: center;
+      gap: 8px;
+    }
+
+    /* ── File received banner ── */
+    .file-banner {
+      display: none;
+      align-items: center;
+      gap: 14px;
+      background: var(--surface2);
+      border: 1px solid var(--cyan-border);
+      border-radius: var(--radius);
+      padding: 14px 18px;
+    }
+    .file-banner.visible { display: flex; }
+    .file-banner-icon { font-size: 22px; }
+    .file-banner-name { font-size: 14px; color: var(--cyan); font-weight: 600; }
+    .file-banner-size { font-size: 12px; color: var(--muted); }
+    .file-banner-remove {
+      margin-left: auto;
+      background: transparent;
+      border: 1px solid var(--muted);
+      color: var(--muted);
+      border-radius: 6px;
+      padding: 5px 10px;
+      font-size: 12px;
+      cursor: pointer;
+      transition: all 0.18s;
+    }
+    .file-banner-remove:hover { border-color: var(--red); color: var(--red); }
+
+    /* ── Log preview ── */
+    .log-preview {
+      display: none;
+      background: var(--surface2);
+      border: 1px solid var(--cyan-border);
+      border-radius: var(--radius);
+      overflow: hidden;
+    }
+    .log-preview.visible { display: block; }
+    .log-preview-header {
+      padding: 10px 16px;
+      border-bottom: 1px solid var(--cyan-border);
+      font-size: 11px;
+      color: var(--muted);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .log-preview-dot {
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      background: var(--cyan);
+      animation: blink 1.4s infinite;
+    }
+    @keyframes blink { 0%,100% {opacity:1} 50% {opacity:0.3} }
+    .log-preview pre {
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--cyan);
+      padding: 16px;
+      max-height: 220px;
+      overflow-y: auto;
+      line-height: 1.6;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+    .log-preview pre::-webkit-scrollbar { width: 4px; }
+    .log-preview pre::-webkit-scrollbar-track { background: transparent; }
+    .log-preview pre::-webkit-scrollbar-thumb { background: var(--muted); border-radius: 10px; }
+
+    /* ── Analyze button ── */
+    .analyze-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      padding: 14px 32px;
+      background: var(--cyan);
+      color: #080d18;
+      font-size: 15px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      border: none;
+      border-radius: var(--radius);
+      cursor: pointer;
+      transition: opacity 0.2s;
+      width: 100%;
+      max-width: 360px;
+    }
+    .analyze-btn:hover:not(:disabled) { opacity: 0.87; }
+    .analyze-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+
+    /* ── Loading ── */
+    .loading {
+      display: none;
+      align-items: center;
+      gap: 14px;
+      padding: 20px 0;
+    }
+    .loading.visible { display: flex; }
+    .spinner {
+      width: 22px; height: 22px;
+      border: 2px solid var(--cyan-border);
+      border-top-color: var(--cyan);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      flex-shrink: 0;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .loading-text { font-size: 14px; color: var(--cyan); }
+
+    /* ── Results ── */
+    .results { display: none; flex-direction: column; gap: 16px; }
+    .results.visible { display: flex; }
+
+    .result-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 4px;
+    }
+    .result-header-icon {
+      width: 32px; height: 32px;
+      background: var(--cyan-dim);
+      border: 1px solid var(--cyan-border);
+      border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 15px;
+    }
+    .result-title { font-size: 15px; font-weight: 600; color: var(--cyan); }
+
+    .result-card {
+      background: var(--surface2);
+      border: 1px solid var(--cyan-border);
+      border-radius: var(--radius);
+      padding: 18px 20px;
+    }
+
+    .inference-text {
+      font-size: 14px;
+      color: var(--text);
+      line-height: 1.7;
+    }
+
+    .step-list { display: flex; flex-direction: column; gap: 10px; }
+    .step-item {
+      display: flex;
+      gap: 12px;
+      align-items: flex-start;
+    }
+    .step-num {
+      width: 24px; height: 24px;
+      border-radius: 50%;
+      background: var(--cyan-dim);
+      border: 1px solid var(--cyan-border);
+      color: var(--cyan);
+      font-size: 11px;
+      font-weight: 700;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+      margin-top: 1px;
+    }
+    .step-text { font-size: 13.5px; color: var(--text); line-height: 1.6; }
+
+    .cmd-list { display: flex; flex-direction: column; gap: 12px; }
+    .cmd-item { display: flex; flex-direction: column; gap: 5px; }
+    .cmd-code {
+      font-family: var(--mono);
+      font-size: 13px;
+      color: var(--cyan);
+      background: var(--surface);
+      border: 1px solid var(--cyan-border);
+      border-radius: 6px;
+      padding: 8px 12px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .cmd-prompt { color: var(--muted); user-select: none; }
+    .cmd-copy {
+      margin-left: auto;
+      background: transparent;
+      border: none;
+      color: var(--muted);
+      cursor: pointer;
+      font-size: 13px;
+      padding: 2px 6px;
+      border-radius: 4px;
+      transition: color 0.18s;
+    }
+    .cmd-copy:hover { color: var(--cyan); }
+    .cmd-expl { font-size: 12.5px; color: var(--muted); padding-left: 4px; line-height: 1.5; }
+
+    /* ── Error banner ── */
+    .error-banner {
+      display: none;
+      align-items: center;
+      gap: 12px;
+      background: rgba(255,82,82,0.08);
+      border: 1px solid rgba(255,82,82,0.3);
+      border-radius: var(--radius);
+      padding: 14px 18px;
+      color: var(--red);
+      font-size: 13.5px;
+    }
+    .error-banner.visible { display: flex; }
+
+    /* ── Responsive ── */
+    @media (max-width: 768px) {
+      .sidebar { display: none; }
+      .main { padding: 20px 16px; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ── Top bar ── -->
+<header class="topbar">
+  <div class="topbar-brand">
+    <div class="brand-icon">🖥️</div>
+    <div>
+      <div class="brand-name">AI SERVER LOG AGENT</div>
+      <div class="brand-sub">Intelligent log analysis & diagnostics</div>
+    </div>
+  </div>
+  <div class="topbar-badges">
+    <span class="badge">GPT-4 Powered</span>
+    <span class="badge">Real-Time Analysis</span>
+  </div>
+</header>
+
+<div class="layout">
+
+  <!-- ── Sidebar ── -->
+  <aside class="sidebar">
+    <div>
+      <h4>System Status</h4>
+      <div class="stat-grid">
+        <div class="stat-card">
+          <div class="stat-icon">🤖</div>
+          <div>
+            <div class="stat-label">AI Model</div>
+            <div class="stat-val">GPT-4</div>
+          </div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon">⚡</div>
+          <div>
+            <div class="stat-label">Analysis Mode</div>
+            <div class="stat-val">Real-Time</div>
+          </div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon">📦</div>
+          <div>
+            <div class="stat-label">Max File Size</div>
+            <div class="stat-val">5 MB</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <h4>Capabilities</h4>
+      <div class="capability-list">
+        <div class="cap-item"><div class="cap-dot"></div>Root cause inference from log patterns</div>
+        <div class="cap-item"><div class="cap-dot"></div>Actionable troubleshooting steps</div>
+        <div class="cap-item"><div class="cap-dot"></div>Targeted Linux diagnostic commands</div>
+        <div class="cap-item"><div class="cap-dot"></div>Supports .txt, .log, and .docx formats</div>
+        <div class="cap-item"><div class="cap-dot"></div>Handles kernel, app & service logs</div>
+      </div>
+    </div>
+
+    <div>
+      <h4>Supported Formats</h4>
+      <div class="format-list">
+        <span class="fmt-chip">.txt</span>
+        <span class="fmt-chip">.log</span>
+        <span class="fmt-chip">.docx</span>
+      </div>
+    </div>
+
+    <div>
+      <h4>How It Works</h4>
+      <div class="capability-list">
+        <div class="cap-item"><div class="cap-dot"></div>Upload your server error log file</div>
+        <div class="cap-item"><div class="cap-dot"></div>GPT-4 analyzes the first 4,000 characters</div>
+        <div class="cap-item"><div class="cap-dot"></div>Receive inference, steps & commands</div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ── Main ── -->
+  <main class="main">
+    <div class="page-header">
+      <h1>Server Log Analysis Dashboard</h1>
+      <p>Upload a server error log to receive AI-powered root cause analysis and remediation guidance.</p>
+    </div>
+
+    <!-- Upload zone -->
+    <div class="upload-zone" id="uploadZone">
+      <input type="file" id="fileInput" accept=".txt,.log,.docx" />
+      <div class="upload-icon">📂</div>
+      <h3>Drop your log file here</h3>
+      <p>or click to browse — .txt, .log, .docx supported</p>
+      <div class="formats">
+        <span class="fmt-chip">.txt</span>
+        <span class="fmt-chip">.log</span>
+        <span class="fmt-chip">.docx</span>
+      </div>
+    </div>
+
+    <!-- Demo log button -->
+    <div style="text-align:center;">
+      <button class="demo-btn" onclick="loadDemoLog()">⚡ Try Demo Log</button>
+      <p style="font-size:12px;color:var(--muted);margin-top:6px;">Load a sample server error log to see AI analysis in action</p>
+    </div>
+
+    <!-- File received banner -->
+    <div class="file-banner" id="fileBanner">
+      <div class="file-banner-icon">📄</div>
+      <div>
+        <div class="file-banner-name" id="fileName"></div>
+        <div class="file-banner-size" id="fileSize"></div>
+      </div>
+      <button class="file-banner-remove" onclick="clearFile()">Remove</button>
+    </div>
+
+    <!-- Log preview -->
+    <div class="log-preview" id="logPreview">
+      <div class="log-preview-header">
+        <div class="log-preview-dot"></div>
+        Log Preview
+      </div>
+      <pre id="logPreviewContent"></pre>
+    </div>
+
+    <!-- Analyze button -->
+    <div>
+      <button class="analyze-btn" id="analyzeBtn" onclick="analyze()" disabled>
+        <span>⚡</span> ANALYZE LOG WITH AI
+      </button>
+    </div>
+
+    <!-- Loading -->
+    <div class="loading" id="loading">
+      <div class="spinner"></div>
+      <div class="loading-text">Analyzing log with GPT-4 — this may take a moment...</div>
+    </div>
+
+    <!-- Error -->
+    <div class="error-banner" id="errorBanner">
+      <span>⚠️</span>
+      <span id="errorText"></span>
+    </div>
+
+    <!-- Results -->
+    <div class="results" id="results">
+
+      <!-- Inference -->
+      <div>
+        <div class="result-header">
+          <div class="result-header-icon">🔍</div>
+          <div class="result-title">Root Cause Inference</div>
+        </div>
+        <div class="result-card">
+          <div class="inference-text" id="inferenceText"></div>
+        </div>
+      </div>
+
+      <!-- Troubleshooting Steps -->
+      <div>
+        <div class="result-header">
+          <div class="result-header-icon">🛠️</div>
+          <div class="result-title">Troubleshooting Steps</div>
+        </div>
+        <div class="result-card">
+          <div class="step-list" id="stepList"></div>
+        </div>
+      </div>
+
+      <!-- Linux Commands -->
+      <div>
+        <div class="result-header">
+          <div class="result-header-icon">💻</div>
+          <div class="result-title">Suggested Linux Commands</div>
+        </div>
+        <div class="result-card">
+          <div class="cmd-list" id="cmdList"></div>
+        </div>
+      </div>
+
+    </div>
+  </main>
+</div>
+
+<script>
+  const DEMO_LOG = `[2026-06-30 01:14:22] KERNEL: Out of memory: Kill process 4821 (mysqld) score 892 or sacrifice child
+[2026-06-30 01:14:22] KERNEL: Killed process 4821 (mysqld) total-vm:8452136kB, anon-rss:7980040kB, file-rss:0kB, shmem-rss:0kB
+[2026-06-30 01:14:23] systemd[1]: mysql.service: Main process exited, code=killed, status=9/KILL
+[2026-06-30 01:14:23] systemd[1]: mysql.service: Failed with result 'signal'.
+[2026-06-30 01:14:23] systemd[1]: Failed to start MySQL Community Server.
+[2026-06-30 01:14:24] ERROR 2002 (HY000): Can't connect to local MySQL server through socket '/var/run/mysqld/mysqld.sock' (2)
+[2026-06-30 01:14:25] nginx[1023]: connect() failed (111: Connection refused) while connecting to upstream, client: 203.0.113.42, server: api.example.com, request: "POST /api/v1/orders HTTP/1.1", upstream: "http://127.0.0.1:8080/api/v1/orders"
+[2026-06-30 01:14:25] nginx[1023]: upstream timed out (110: Connection timed out) while reading response header from upstream
+[2026-06-30 01:14:26] app[worker-3]: CRITICAL - Database connection pool exhausted: could not obtain connection within timeout (30s)
+[2026-06-30 01:14:26] app[worker-3]: sqlalchemy.exc.OperationalError: (pymysql.err.OperationalError) (2003, "Can't connect to MySQL server on '127.0.0.1' (111 Connection refused)")
+[2026-06-30 01:14:27] app[worker-1]: CRITICAL - Unhandled exception in request handler
+[2026-06-30 01:14:27] app[worker-1]: Traceback (most recent call last):
+[2026-06-30 01:14:27] app[worker-1]:   File "/opt/app/api/orders.py", line 88, in create_order
+[2026-06-30 01:14:27] app[worker-1]:     db.session.commit()
+[2026-06-30 01:14:27] app[worker-1]: sqlalchemy.exc.OperationalError: (pymysql.err.OperationalError) (2006, 'MySQL server has gone away')
+[2026-06-30 01:14:28] app[worker-2]: ERROR - Failed to acquire Redis lock for job_queue:process_payments (timeout after 15s)
+[2026-06-30 01:14:28] app[worker-4]: WARNING - Disk usage at 97% on /dev/sda1: available 1.1 GB of 40 GB
+[2026-06-30 01:14:29] app[worker-4]: ERROR - Failed to write temp file /tmp/export_20260630_011429.csv: No space left on device
+[2026-06-30 01:14:30] cron[8834]: ERROR - Scheduled backup job failed: mysqldump: Got error: 2002: Can't connect to local MySQL server through socket '/var/run/mysqld/mysqld.sock' (2) when trying to connect
+[2026-06-30 01:14:31] systemd[1]: mysql.service: Scheduled restart job, restart counter is at 3.
+[2026-06-30 01:14:31] systemd[1]: Stopped MySQL Community Server.
+[2026-06-30 01:14:31] systemd[1]: Starting MySQL Community Server...
+[2026-06-30 01:14:38] mysqld[4956]: InnoDB: Starting crash recovery.
+[2026-06-30 01:14:39] mysqld[4956]: InnoDB: Reading tablespace information from the .ibd files...
+[2026-06-30 01:14:41] mysqld[4956]: InnoDB: Completed initialization of buffer pool
+[2026-06-30 01:14:42] KERNEL: Out of memory: Kill process 4956 (mysqld) score 889 or sacrifice child
+[2026-06-30 01:14:42] KERNEL: Killed process 4956 (mysqld) total-vm:8391040kB, anon-rss:7914888kB, file-rss:0kB
+[2026-06-30 01:14:43] systemd[1]: mysql.service: Failed with result 'signal'.
+[2026-06-30 01:14:43] systemd[1]: Failed to start MySQL Community Server. (2nd attempt)
+[2026-06-30 01:14:44] app[healthcheck]: CRITICAL - Health check FAILED: /api/health returned HTTP 503 (upstream unavailable)
+[2026-06-30 01:14:45] alertmanager: FIRING - PagerDuty alert sent: SERVICE DOWN api.example.com — MySQL unreachable, disk at 97%`;
+
+  let selectedFile = null;
+
+  const fileInput    = document.getElementById('fileInput');
+  const uploadZone   = document.getElementById('uploadZone');
+  const fileBanner   = document.getElementById('fileBanner');
+  const logPreview   = document.getElementById('logPreview');
+  const analyzeBtn   = document.getElementById('analyzeBtn');
+  const loading      = document.getElementById('loading');
+  const errorBanner  = document.getElementById('errorBanner');
+  const results      = document.getElementById('results');
+
+  fileInput.addEventListener('change', e => handleFile(e.target.files[0]));
+
+  uploadZone.addEventListener('dragover', e => { e.preventDefault(); uploadZone.classList.add('dragover'); });
+  uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('dragover'));
+  uploadZone.addEventListener('drop', e => {
+    e.preventDefault();
+    uploadZone.classList.remove('dragover');
+    if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]);
+  });
+
+  function handleFile(file) {
+    if (!file) return;
+    selectedFile = file;
+
+    document.getElementById('fileName').textContent = file.name;
+    document.getElementById('fileSize').textContent = (file.size / 1024).toFixed(1) + ' KB';
+    fileBanner.classList.add('visible');
+    uploadZone.style.display = 'none';
+    analyzeBtn.disabled = false;
+
+    // Preview
+    if (!file.name.toLowerCase().endsWith('.docx')) {
+      const reader = new FileReader();
+      reader.onload = e => {
+        document.getElementById('logPreviewContent').textContent = e.target.result.slice(0, 3000);
+        logPreview.classList.add('visible');
+      };
+      reader.readAsText(file);
+    }
+  }
+
+  function clearFile() {
+    selectedFile = null;
+    fileInput.value = '';
+    fileBanner.classList.remove('visible');
+    logPreview.classList.remove('visible');
+    uploadZone.style.display = '';
+    analyzeBtn.disabled = true;
+    results.classList.remove('visible');
+    errorBanner.classList.remove('visible');
+    loading.classList.remove('visible');
+  }
+
+  function showError(msg) {
+    document.getElementById('errorText').textContent = msg;
+    errorBanner.classList.add('visible');
+  }
+
+  function escHtml(s) {
+    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
+  async function analyze() {
+    if (!selectedFile) return;
+
+    results.classList.remove('visible');
+    errorBanner.classList.remove('visible');
+    loading.classList.add('visible');
+    analyzeBtn.disabled = true;
+
+    const fd = new FormData();
+    fd.append('file', selectedFile);
+
+    try {
+      const res  = await fetch('/api/analyze', { method: 'POST', body: fd });
+      const data = await res.json();
+      loading.classList.remove('visible');
+
+      if (data.error) { showError(data.error); analyzeBtn.disabled = false; return; }
+
+      // Inference
+      document.getElementById('inferenceText').textContent = data.inference;
+
+      // Steps
+      const stepList = document.getElementById('stepList');
+      stepList.innerHTML = '';
+      (data.steps || []).forEach((s, i) => {
+        stepList.innerHTML += `
+          <div class="step-item">
+            <div class="step-num">${i + 1}</div>
+            <div class="step-text">${escHtml(s)}</div>
+          </div>`;
+      });
+
+      // Commands
+      const cmdList = document.getElementById('cmdList');
+      cmdList.innerHTML = '';
+      (data.commands || []).forEach(c => {
+        cmdList.innerHTML += `
+          <div class="cmd-item">
+            <div class="cmd-code">
+              <span class="cmd-prompt">$</span>
+              <span>${escHtml(c.cmd)}</span>
+              <button class="cmd-copy" title="Copy" onclick="copyCmd(this, '${c.cmd.replace(/'/g,"\\'")}')">⧉</button>
+            </div>
+            ${c.explanation ? `<div class="cmd-expl">${escHtml(c.explanation)}</div>` : ''}
+          </div>`;
+      });
+
+      results.classList.add('visible');
+      results.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    } catch {
+      loading.classList.remove('visible');
+      showError('Connection error. Please try again.');
+    }
+    analyzeBtn.disabled = false;
+  }
+
+  function loadDemoLog() {
+    const blob = new Blob([DEMO_LOG], { type: 'text/plain' });
+    const file = new File([blob], 'demo_server_error.log', { type: 'text/plain' });
+    handleFile(file);
+  }
+
+  function copyCmd(btn, cmd) {
+    navigator.clipboard.writeText(cmd).then(() => {
+      const orig = btn.textContent;
+      btn.textContent = '✓';
+      btn.style.color = 'var(--cyan)';
+      setTimeout(() => { btn.textContent = orig; btn.style.color = ''; }, 1500);
+    });
+  }
+</script>
+</body>
+</html>
